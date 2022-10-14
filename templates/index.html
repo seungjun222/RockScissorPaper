@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>가위바위보 게임</title>
+    <style>
+        .image-container {
+            width: 200px;
+            height: 200px;
+        }
+
+        .s {
+            background-position: center;
+            background-repeat: no-repeat;
+            background-image: url(../가위.png);
+        }
+
+        .r {
+            background-position: center;
+            background-repeat: no-repeat;
+            background-image: url(../바위.png);
+        }
+
+        .p {
+            background-position: center;
+            background-repeat: no-repeat;
+            background-image: url(../보.png);
+        }
+
+        .match {
+            margin: 0 15px;
+            font-size: 50px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .user-container {
+            text-align: center;
+            background-color: antiquewhite;
+        }
+
+        .button {
+            width: 100px;
+            height: 100px;
+            margin: 0 5px;
+            font-size: 1.2rem;
+        }
+
+        .center {
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .score {
+            margin: 0 5px;
+        }
+
+        .score-container {
+            font-size: 1.3rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="center score-container">
+        <span class="score">승: <span id="win">0</span></span>
+        <span class="score">무: <span id="draw">0</span></span>
+        <span class="score">패: <span id="loose">0</span></span>
+    </div>
+    <br>
+    <div class="row">
+        <div class="user-container">
+            나
+            <div id="me" class="image-container">
+
+            </div>
+        </div>
+        <div class="match">
+            vs
+        </div>
+        <div class="user-container">
+            상대
+            <div id="you" class="image-container">
+
+            </div>
+        </div>
+    </div>
+    <div class="center">
+        <p>어떤 것을 내실 건가요?</p>
+        <p id="countdown"></p>
+    </div>
+    <div id="controller" class="row">
+
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const me = document.getElementById("me")
+        const you = document.getElementById("you")
+        const controller = document.getElementById("controller")
+        const countdown = document.getElementById("countdown")
+        const srp = ["s", "r", "p"];
+
+        let score;
+        resetScore();
+
+        let selectedItemIndex;
+
+        var socket = io();
+
+        socket.on('stop', () => {
+            // stop 신호 시, 이전 상대와의 게임이 끝남, 점수 초기화 및 메시지 띄우기
+            console.log("stop");
+            setMessage(`상대 플레이어가 들어오길 기다려주세요.`);
+            resetScore();
+        });
+
+        socket.on('countdown', (count) => {
+            console.log("countdown ", count);
+            countdown.innerText = `${count}초 후 랜덤 선택됩니다.`;
+            if (count <= 0) {
+                if (!(me.classList.contains("s") || me.classList.contains("r") || me.classList.contains("p"))) {
+                    const random = Math.floor(Math.random()* 10) % 3; // 랜덤 숫자
+                    console.log("랜덤 선택: ", random);
+                    buttonOnClick(srp[random]);
+                }
+                // 상대방에게 내가 낸 것을 알려줍니다.
+                socket.emit('submit', { user: socket.id, message: selectedItemIndex });
+            }
+        });
+
+        socket.on('restart', (count) => {
+            console.log("restart ", count);
+            countdown.innerText = `${count}초 후 재시작합니다.`;
+        });
+
+        socket.on('start', () => {
+            console.log("게임 시작");
+            // 상대방과 나의 이전 선택을 지웁니다.
+            buttonOnClick();
+            setYou();
+            // 게임이 시작됐을 때만 버튼을 활성화 합니다.
+            addController();
+            // 점수를 띄웁니다.
+            displayScore();
+        });
+
+
+        socket.on('result', (result) => {
+            console.log("결과: ", JSON.stringify(result));
+            setYou(srp[result.you]);
+            switch (result.result) {
+                case "승":
+                    score.win.value += 1;
+                    break;
+                case "패":
+                    score.loose.value += 1;
+                    break;
+                case "무":
+                    score.draw.value += 1;
+                    break;
+            }
+            displayScore();
+        });
+
+        function addController() {
+            controller.innerHTML = `
+                <button id="s" class="button">가위</button>
+                <button id="r" class="button">바위</button>
+                <button id="p" class="button">보</button>
+            `
+            for (let i of srp) {
+                document.getElementById(i).addEventListener("click", () => {
+                    buttonOnClick(i);
+                });
+            }
+        }
+
+        function setMessage(msg) {
+            // Controller를 숨기고 그 자리에 메시지를 띄웁니다.
+            countdown.innerHTML = `${msg ?? ''}`;
+            controller.innerHTML = '';
+        }
+
+        function buttonOnClick(i) {
+            // 클릭한 이미지로 바꿔줍니다.
+            me.classList.remove("s");
+            me.classList.remove("r");
+            me.classList.remove("p");
+            if (i) {
+                me.classList.add(i);
+            }
+
+            // 컨트롤러를 숨깁니다.
+            controller.innerHTML = '잠시만 기다려주세요.';
+            selectedItemIndex = srp.indexOf(i);
+        }
+
+        function setYou(i) {
+            // 상대편이 낸 것을 보여줍니다.
+            you.classList.remove("s");
+            you.classList.remove("r");
+            you.classList.remove("p");
+            if (i) {
+                you.classList.add(i);
+            }
+        }
+
+        function displayScore() {
+            // 점수 보이기
+            for (const key in score) {
+                score[key].dom.innerText = score[key].value;
+            }
+        }
+
+        function resetScore() {
+            // 점수 초기화
+            score = {
+                win: {
+                    dom: document.getElementById("win"),
+                    value: 0,
+                },
+                draw: {
+                    dom: document.getElementById("draw"),
+                    value: 0,
+                },
+                loose: {
+                    dom: document.getElementById("loose"),
+                    value: 0,
+                },
+            };
+        }
+
+    </script>
+</body>
+
+</html>
